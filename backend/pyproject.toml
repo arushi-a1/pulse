@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F: pyflakes + pycodestyle correctness rules. I: import sorting.
+# UP: pyupgrade (modern syntax). Deliberately NOT enabling flake8-blind-except
+# (BLE) or flake8-datetimez (DTZ) project-wide: a few blind `except Exception`
+# catches are intentional here (e.g. "never let failure-logging itself crash
+# the worker") and are commented explaining why at each site, which is a
+# clearer signal than a blanket lint rule would be.
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "worker"]

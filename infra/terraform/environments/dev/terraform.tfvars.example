@@ -1,0 +1,17 @@
+environment  = "dev"
+aws_region   = "us-west-2"
+project_name = "pulse"
+
+# Built and pushed by CI (see .github/workflows/ci.yml) -- update after each
+# release, or wire this up to read the :latest tag / a CI output instead.
+api_image    = "123456789012.dkr.ecr.us-west-2.amazonaws.com/pulse-api:latest"
+worker_image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/pulse-worker:latest"
+
+api_desired_count    = 2
+worker_desired_count = 2
+api_min_count        = 2
+api_max_count         = 10
+worker_min_count      = 1
+worker_max_count      = 20
+
+alarm_notification_email = "you@example.com"

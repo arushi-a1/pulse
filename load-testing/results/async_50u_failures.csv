@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,GET /devices/:id/metrics,HTTPError('404 Client Error: Not Found for url: GET /devices/:id/metrics'),179,2026-08-10T21:32:36Z,2026-08-10T21:33:19Z

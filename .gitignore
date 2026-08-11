@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Env / secrets -- never commit
+.env
+*.env.local
+backend/.env
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+infra/terraform/modules/lambda/build/
+
+# Load test output: the CSVs under load-testing/results/ are committed
+# intentionally -- they're the raw evidence behind the numbers in the
+# README's Performance Results section, not regenerable build artifacts.
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
