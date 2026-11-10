@@ -56,7 +56,7 @@ jobs:
         working-directory: backend
         run: mypy app worker --ignore-missing-imports || true # advisory for now -- see README "Tradeoffs"
 
-      - name: Start moto server (mock AWS: SQS + S3)
+      - name: "Start moto server (mock AWS: SQS + S3)"
         run: |
           pip install moto[server]
           nohup python -m moto.server -p 5001 &
