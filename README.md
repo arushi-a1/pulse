@@ -1,6 +1,6 @@
 # Pulse
 
-A distributed real-time event processing and analytics platform for high-volume device/sensor telemetry. Built as a portfolio project to demonstrate backend, distributed-systems, and cloud-infrastructure engineering: async processing via SQS, idempotent fault-tolerant workers, cache-aside analytics, independently-scaling ECS services, infrastructure as code, and load-tested performance claims (not invented ones).
+A distributed real-time event processing and analytics platform for high-volume device/sensor telemetry. Built as a portfolio project to demonstrate backend, distributed-systems, and cloud-infrastructure engineering: async processing via SQS, idempotent fault-tolerant workers, cache-aside analytics, independently-scaling ECS services, infrastructure as code, and load-tested performance claims.
 
 ```
 Devices ──POST /events──► FastAPI ──enqueue──► SQS ──► Worker ──► Postgres (structured data)
