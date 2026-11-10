@@ -96,6 +96,14 @@ resource "aws_iam_role_policy" "worker_task_policy" {
         Resource = [var.sqs_queue_arn]
       },
       {
+        # Lets the worker fast-path messages that can never succeed (bad
+        # data) straight to the DLQ instead of retrying them 5 times.
+        Sid      = "DeadLetterPermanentFailures"
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [var.sqs_dlq_arn]
+      },
+      {
         Sid      = "ArchiveRawEventsToOwnPrefixOnly"
         Effect   = "Allow"
         Action   = ["s3:PutObject"]

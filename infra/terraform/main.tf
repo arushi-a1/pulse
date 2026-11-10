@@ -56,6 +56,7 @@ module "iam" {
   project_name    = var.project_name
   environment     = var.environment
   sqs_queue_arn   = module.sqs.queue_arn
+  sqs_dlq_arn     = module.sqs.dlq_arn
   s3_bucket_arn   = module.s3.bucket_arn
   db_secret_arn   = module.rds.secret_arn
   alarm_topic_arn = module.cloudwatch.sns_topic_arn
@@ -85,6 +86,7 @@ module "ecs" {
 
   db_secret_arn  = module.rds.secret_arn
   sqs_queue_url  = module.sqs.queue_url
+  sqs_dlq_url    = module.sqs.dlq_url
   sqs_queue_name = "${var.project_name}-${var.environment}-events"
   s3_bucket_name = module.s3.bucket_name
   redis_endpoint = module.redis.primary_endpoint

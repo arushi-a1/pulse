@@ -9,6 +9,8 @@ Failure handling summary (see README "Failure Scenarios" for the full table):
                                       after visibility timeout, exponential
                                       backoff is achieved via SQS's own
                                       redrive + a jittered sleep here.
+  - Bad data (can never succeed)  -> PermanentProcessingError: moved straight
+                                      to the DLQ, no pointless retries.
   - Same event fails repeatedly   -> after `worker_max_receive_count`
                                       attempts, SQS's redrive policy moves it
                                       to the DLQ automatically (configured in
@@ -27,7 +29,7 @@ import random
 import signal
 import time
 
-from app.clients.queue_client import delete_event, receive_events
+from app.clients.queue_client import delete_event, move_to_dlq, receive_events
 from app.config import get_settings
 from app.db import SessionLocal
 from app.logging_config import ContextFilter, configure_logging
@@ -78,15 +80,27 @@ def run_forever() -> None:
     logger.info("worker_stopped_gracefully")
 
 
+def _dead_letter(msg: dict, reason: str) -> None:
+    """Fast-path a message that can never succeed to the DLQ. If either SQS
+    call fails, the message is simply left on the main queue and SQS's
+    redrive policy still moves it to the DLQ after max receives -- so this
+    is an optimization that can't lose a message."""
+    try:
+        move_to_dlq(msg.get("Body", ""), reason)
+        delete_event(msg["ReceiptHandle"])
+        logger.error("message_dead_lettered", extra={"reason": reason})
+    except Exception as exc:  # noqa: BLE001
+        logger.error("dead_letter_failed_falling_back_to_redrive", extra={"reason": reason, "error": str(exc)})
+
+
 def _handle_message(msg: dict) -> None:
     receive_count = int(msg.get("Attributes", {}).get("ApproximateReceiveCount", "1"))
     try:
         body = json.loads(msg["Body"])
     except (KeyError, json.JSONDecodeError) as exc:
-        # Malformed message body can never succeed -> do not delete, let it
-        # exhaust retries and land in the DLQ for manual inspection rather
-        # than silently discarding it.
-        logger.error("malformed_message", extra={"error": str(exc)})
+        # Malformed body can never succeed -> straight to the DLQ for manual
+        # inspection, rather than retrying it or silently discarding it.
+        _dead_letter(msg, f"malformed message body: {exc}")
         return
 
     db = SessionLocal()
@@ -98,8 +112,8 @@ def _handle_message(msg: dict) -> None:
         # dependency (e.g. RDS under load) gets breathing room; the message
         # itself is retried by SQS on its own visibility-timeout schedule.
         time.sleep(min(0.5 * (2 ** min(receive_count, 4)), 8) + random.uniform(0, 0.5))
-    except PermanentProcessingError:
-        logger.error("permanent_failure_awaiting_dlq", extra={"event_id": body.get("event_id")})
+    except PermanentProcessingError as exc:
+        _dead_letter(msg, f"permanent processing error: {exc}")
     finally:
         db.close()
 

@@ -18,13 +18,51 @@ class TransientProcessingError(Exception):
 
 
 class PermanentProcessingError(Exception):
-    """Raised for failures that will never succeed on retry (malformed
-    payload that somehow got past validation). Still not deleted here —
-    left to age out to the DLQ after max receives rather than silently
-    dropped, so nothing is ever lost without a trace."""
+    """Raised for failures that will never succeed on retry (a malformed
+    message that somehow got past API validation: missing fields, an
+    unparsable timestamp, non-numeric readings). Retrying these only burns
+    worker time and delays the DLQ alert, so the worker moves them to the
+    DLQ immediately instead of waiting for SQS's redrive after max receives.
+    Nothing is ever dropped without a trace."""
+
+
+_REQUIRED_FIELDS = ("event_id", "device_id", "event_type", "timestamp", "payload")
+_NUMERIC_PAYLOAD_FIELDS = ("temperature", "battery")
+
+
+def _validate_message(message_body: dict) -> dt.datetime:
+    """Checks everything that depends only on the message itself, before any
+    side effects. A failure here is deterministic -- it will fail the same
+    way on every retry -- so it's classified as permanent. Returns the
+    parsed timestamp."""
+    missing = [f for f in _REQUIRED_FIELDS if f not in message_body]
+    if missing:
+        raise PermanentProcessingError(f"missing fields: {', '.join(missing)}")
+    try:
+        ts = dt.datetime.fromisoformat(message_body["timestamp"])
+    except (TypeError, ValueError) as exc:
+        raise PermanentProcessingError(f"unparsable timestamp: {message_body['timestamp']!r}") from exc
+    payload = message_body["payload"]
+    if not isinstance(payload, dict):
+        raise PermanentProcessingError("payload is not an object")
+    for field in _NUMERIC_PAYLOAD_FIELDS:
+        if not isinstance(payload.get(field), (int, float)):
+            raise PermanentProcessingError(f"payload.{field} missing or not numeric")
+    return ts
 
 
 def process_event(db: Session, message_body: dict, receive_count: int) -> None:
+    try:
+        timestamp = _validate_message(message_body)
+    except PermanentProcessingError as exc:
+        event_id = str(message_body.get("event_id", "unknown"))[:64]
+        _record_failure(db, event_id, f"permanent: {exc}", receive_count)
+        logger.error(
+            "event_permanently_invalid",
+            extra={"event_id": event_id, "device_id": message_body.get("device_id"), "error": str(exc)},
+        )
+        raise
+
     event_id = message_body["event_id"]
     device_id = message_body["device_id"]
 
@@ -54,7 +92,7 @@ def process_event(db: Session, message_body: dict, receive_count: int) -> None:
             s3_archive_key=s3_key,
         )
         db.add(event_row)
-        _update_hourly_rollup(db, device_id, message_body)
+        _update_hourly_rollup(db, device_id, timestamp, message_body["payload"])
         db.commit()
 
         invalidate(f"analytics:device:{device_id}")
@@ -65,6 +103,9 @@ def process_event(db: Session, message_body: dict, receive_count: int) -> None:
             extra={"event_id": event_id, "device_id": device_id, "request_id": message_body.get("request_id", "-")},
         )
     except Exception as exc:
+        # Anything that fails past validation is an infrastructure problem
+        # (DB/S3/Redis hiccup, or a unique-constraint race with another
+        # worker processing the same event) -- worth retrying.
         db.rollback()
         _record_failure(db, event_id, str(exc), receive_count)
         logger.error(
@@ -88,11 +129,13 @@ def _upsert_device(db: Session, device_id: str, timestamp: str) -> None:
     db.execute(stmt)
 
 
-def _update_hourly_rollup(db: Session, device_id: str, message_body: dict) -> None:
-    ts = dt.datetime.fromisoformat(message_body["timestamp"])
+def _update_hourly_rollup(db: Session, device_id: str, ts: dt.datetime, payload: dict) -> None:
     hour_bucket = ts.replace(minute=0, second=0, microsecond=0)
-    payload = message_body["payload"]
 
+    # Read-modify-write on the running average. This is safe with multiple
+    # workers only because _upsert_device() ran first in this same
+    # transaction and holds the device row's lock until commit, so two
+    # workers handling the same device are serialized here.
     existing = (
         db.query(DeviceMetricHourly)
         .filter(DeviceMetricHourly.device_id == device_id, DeviceMetricHourly.hour_bucket == hour_bucket)
