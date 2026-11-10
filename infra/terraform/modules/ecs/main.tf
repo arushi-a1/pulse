@@ -183,6 +183,7 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "ENVIRONMENT", value = var.environment },
       { name = "AWS_REGION", value = var.aws_region },
       { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
+      { name = "SQS_DLQ_URL", value = var.sqs_dlq_url },
       { name = "S3_BUCKET", value = var.s3_bucket_name },
       { name = "REDIS_URL", value = "redis://${var.redis_endpoint}:6379/0" },
     ]

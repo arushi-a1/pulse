@@ -17,6 +17,7 @@ variable "worker_task_role_arn" { type = string }
 
 variable "db_secret_arn" { type = string }
 variable "sqs_queue_url" { type = string }
+variable "sqs_dlq_url" { type = string }
 variable "sqs_queue_name" { type = string }
 variable "s3_bucket_name" { type = string }
 variable "redis_endpoint" { type = string }

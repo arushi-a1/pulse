@@ -50,6 +50,18 @@ def delete_event(receipt_handle: str, queue_url: str | None = None) -> None:
     _client.delete_message(QueueUrl=queue_url or settings.sqs_queue_url, ReceiptHandle=receipt_handle)
 
 
+def move_to_dlq(raw_body: str, reason: str) -> None:
+    """Sends a message that can never succeed straight to the DLQ (with the
+    reason attached) instead of waiting for SQS's redrive policy to move it
+    after max receives. The caller deletes it from the main queue only after
+    this succeeds, so a failure here falls back to normal redrive."""
+    _client.send_message(
+        QueueUrl=settings.sqs_dlq_url,
+        MessageBody=raw_body,
+        MessageAttributes={"failure_reason": {"DataType": "String", "StringValue": reason[:1024] or "unknown"}},
+    )
+
+
 def queue_depth(queue_url: str | None = None) -> int:
     """Used both by the /analytics endpoint and, in prod, backs the CloudWatch
     ApproximateNumberOfMessagesVisible alarm that drives worker autoscaling."""

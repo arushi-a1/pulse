@@ -2,7 +2,7 @@
 from sqlalchemy import select
 
 from app.models import Device, Event, ProcessingFailure
-from worker.processor import TransientProcessingError, process_event
+from worker.processor import PermanentProcessingError, process_event
 
 
 def _message(device_id: str, event_id: str, temperature: float = 20.0) -> dict:
@@ -56,16 +56,30 @@ def test_process_event_increments_device_event_count_across_distinct_events(db_s
     assert device.event_count == 2
 
 
-def test_process_event_raises_transient_error_on_malformed_timestamp(db_session, unique_id):
+def test_process_event_raises_permanent_error_on_malformed_timestamp(db_session, unique_id):
     # Pydantic guarantees payload completeness on the way in, so the realistic
     # failure mode here is a message that fails to parse downstream (e.g. an
-    # unparsable timestamp reaching the hourly-rollup bucketing logic).
+    # unparsable timestamp). It will fail identically on every retry, so it
+    # must be classified as permanent -- not retried 5 times.
     msg = _message(f"dev-{unique_id}", f"evt-{unique_id}")
     msg["timestamp"] = "not-a-valid-timestamp"
 
     import pytest
 
-    with pytest.raises(TransientProcessingError):
+    with pytest.raises(PermanentProcessingError):
+        process_event(db_session, msg, receive_count=1)
+
+    # Validation happens before any side effects.
+    assert db_session.get(Device, f"dev-{unique_id}") is None
+
+
+def test_process_event_raises_permanent_error_on_missing_reading(db_session, unique_id):
+    msg = _message(f"dev-{unique_id}", f"evt-{unique_id}")
+    del msg["payload"]["temperature"]
+
+    import pytest
+
+    with pytest.raises(PermanentProcessingError):
         process_event(db_session, msg, receive_count=1)
 
 
@@ -75,7 +89,7 @@ def test_failed_processing_is_logged_for_visibility(db_session, unique_id):
 
     import pytest
 
-    with pytest.raises(TransientProcessingError):
+    with pytest.raises(PermanentProcessingError):
         process_event(db_session, msg, receive_count=3)
 
     failure = db_session.scalar(

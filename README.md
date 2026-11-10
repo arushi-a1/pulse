@@ -109,11 +109,12 @@ Idempotency: `event_id` is optional on the request. If omitted, the server deriv
 |---|---|
 | Worker crashes mid-processing | Message was never deleted from SQS, so it becomes visible again after the visibility timeout and another worker picks it up. Idempotency (unique `event_id` constraint in Postgres) makes reprocessing safe even if the crash happened after a partial DB write. |
 | A downstream (DB/S3) blip causes processing to fail | Worker raises `TransientProcessingError`, does **not** delete the message, sleeps with jittered exponential backoff, and moves on. SQS redelivers on its own schedule. |
-| The same event fails repeatedly (bad data, permanent bug) | After 5 receive attempts (`maxReceiveCount` in the redrive policy), SQS automatically moves the message to the DLQ. A CloudWatch alarm fires the instant anything lands there, and a small Lambda notifies via SNS. Nothing is silently dropped. |
+| An event contains bad data that can never succeed (unparsable timestamp, missing reading) | The worker validates every message before touching anything and raises `PermanentProcessingError`. It records the failure in `processing_failures`, then sends the message straight to the DLQ and deletes it from the main queue, with no pointless retries. If that DLQ send fails, the message stays put and the normal redrive policy (next row) still catches it. |
+| The same event keeps failing for some other reason (e.g. a persistent bug) | After 5 receive attempts (`maxReceiveCount` in the redrive policy), SQS automatically moves the message to the DLQ. A CloudWatch alarm fires the instant anything lands there, and a small Lambda notifies via SNS. Nothing is silently dropped. |
 | Duplicate delivery (SQS's at-least-once guarantee, or a client retry) | The unique constraint on `events.event_id` makes reprocessing a no-op — verified directly in the idempotency tests (see Testing below). |
 | Redis is unavailable | `get_or_set` catches `RedisError`, logs a warning, and falls back to querying Postgres directly — the request still succeeds, just without the cache speedup. Degraded, not down. |
 | A traffic spike well beyond worker capacity | The queue backlog grows (see the 100-user load test below, where depth reached 2,739 messages); `POST /events` latency and error rate are unaffected because enqueueing is cheap regardless of backlog size. In production, worker autoscaling on queue depth (see Scaling) absorbs this within minutes; in this local, single-worker-process test environment it just drains once load stops. |
-| Malformed message body reaches the worker (shouldn't happen given Pydantic validation upstream, but defensively handled) | Logged and skipped rather than crashing the consumer loop — covered by `test_handle_message_does_not_raise_on_malformed_body`. |
+| Malformed message body reaches the worker (shouldn't happen given Pydantic validation upstream, but defensively handled) | Sent straight to the DLQ for inspection rather than crashing the consumer loop or being retried — covered by `test_handle_message_does_not_raise_on_malformed_body`. |
 
 ## Scaling
 
@@ -157,8 +158,8 @@ pytest tests/ -v
 19 tests, all passing against a real Postgres + Redis + mock-SQS/S3 stack (not mocked at the ORM/client level — these exercise actual SQL, actual JSON payload extraction, actual boto3 calls):
 
 - **API integration** (`test_events_api.py`): health checks, 202 on valid events, 422 on out-of-range/invalid/blank fields, 404 on unknown devices, request-ID header presence.
-- **Idempotency** (`test_idempotency.py`): duplicate `event_id` processed twice → exactly one row, original values preserved, device event count not double-counted; a genuinely-malformed message raises `TransientProcessingError` and is logged to `processing_failures`.
-- **Worker** (`test_worker.py`): a real message sent to SQS and consumed end-to-end lands in Postgres; a malformed message body is logged and skipped rather than crashing the consumer.
+- **Idempotency** (`test_idempotency.py`): duplicate `event_id` processed twice → exactly one row, original values preserved, device event count not double-counted; a genuinely-malformed message raises `PermanentProcessingError` before any side effects and is logged to `processing_failures`.
+- **Worker** (`test_worker.py`): a real message sent to SQS and consumed end-to-end lands in Postgres; a malformed message body doesn't crash the consumer; a permanently-invalid event goes straight to the DLQ on its first attempt and is removed from the main queue.
 - **Cache** (`test_cache.py`): cache-aside hits on the second call (loader invoked once), invalidation forces a reload, hit-rate stats stay in range.
 
 Two real bugs were caught and fixed during this process, not left in: a SQLAlchemy JSON-column cast that used Python's `float` instead of the JSON comparator's `.as_float()` (broke `/devices/{id}/metrics`), and a validation-error handler that tried to JSON-serialize a raw `ValueError` object from Pydantic's error context (turned a clean `422` into a `500`).
