@@ -6,7 +6,7 @@ resource "aws_sqs_queue" "dlq" {
 
 resource "aws_sqs_queue" "events" {
   name                       = "${var.project_name}-${var.environment}-events"
-  visibility_timeout_seconds = 60 # > worst-case processing time, so a slow-but-successful run isn't redelivered mid-flight
+  visibility_timeout_seconds = 60     # > worst-case processing time, so a slow-but-successful run isn't redelivered mid-flight
   message_retention_seconds  = 345600 # 4 days
   receive_wait_time_seconds  = 10     # long polling -- fewer empty receives than short polling
 

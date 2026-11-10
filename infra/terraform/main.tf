@@ -69,12 +69,12 @@ module "ecs" {
   environment  = var.environment
   aws_region   = var.aws_region
 
-  vpc_id                        = module.networking.vpc_id
-  public_subnet_ids             = module.networking.public_subnet_ids
-  private_subnet_ids            = module.networking.private_subnet_ids
-  alb_security_group_id         = module.networking.alb_security_group_id
-  ecs_api_security_group_id     = module.networking.ecs_api_security_group_id
-  ecs_worker_security_group_id  = module.networking.ecs_worker_security_group_id
+  vpc_id                       = module.networking.vpc_id
+  public_subnet_ids            = module.networking.public_subnet_ids
+  private_subnet_ids           = module.networking.private_subnet_ids
+  alb_security_group_id        = module.networking.alb_security_group_id
+  ecs_api_security_group_id    = module.networking.ecs_api_security_group_id
+  ecs_worker_security_group_id = module.networking.ecs_worker_security_group_id
 
   api_image    = var.api_image
   worker_image = var.worker_image
@@ -107,17 +107,17 @@ module "ecs" {
 module "cloudwatch" {
   source = "./modules/cloudwatch"
 
-  project_name              = var.project_name
-  environment               = var.environment
-  aws_region                = var.aws_region
-  alarm_notification_email  = var.alarm_notification_email
-  queue_name                = "${var.project_name}-${var.environment}-events"
-  dlq_name                  = "${var.project_name}-${var.environment}-events-dlq"
-  alb_arn_suffix            = module.ecs.api_load_balancer_dns
-  rds_instance_id           = "${var.project_name}-${var.environment}"
-  ecs_cluster_name          = module.ecs.cluster_name
-  api_service_name          = module.ecs.api_service_name
-  worker_service_name       = module.ecs.worker_service_name
+  project_name             = var.project_name
+  environment              = var.environment
+  aws_region               = var.aws_region
+  alarm_notification_email = var.alarm_notification_email
+  queue_name               = "${var.project_name}-${var.environment}-events"
+  dlq_name                 = "${var.project_name}-${var.environment}-events-dlq"
+  alb_arn_suffix           = module.ecs.api_load_balancer_dns
+  rds_instance_id          = "${var.project_name}-${var.environment}"
+  ecs_cluster_name         = module.ecs.cluster_name
+  api_service_name         = module.ecs.api_service_name
+  worker_service_name      = module.ecs.worker_service_name
 }
 
 # --- Async processing (Lambda, only place it's used -- see README) -----------

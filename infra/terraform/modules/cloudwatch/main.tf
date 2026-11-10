@@ -76,8 +76,8 @@ resource "aws_cloudwatch_dashboard" "main" {
       {
         type = "metric", x = 0, y = 0, width = 12, height = 6,
         properties = {
-          title   = "API Request Count & Latency (p50/p95/p99)"
-          region  = var.aws_region
+          title  = "API Request Count & Latency (p50/p95/p99)"
+          region = var.aws_region
           metrics = [
             ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", var.alb_arn_suffix, { stat = "Sum" }],
             ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", var.alb_arn_suffix, { stat = "p50" }],
@@ -135,7 +135,7 @@ resource "aws_cloudwatch_dashboard" "main" {
       },
       {
         type = "log",
-        x = 12, y = 12, width = 12, height = 6,
+        x    = 12, y = 12, width = 12, height = 6,
         properties = {
           title  = "Recent Worker Failures"
           region = var.aws_region
