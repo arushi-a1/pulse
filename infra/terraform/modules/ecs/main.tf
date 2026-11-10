@@ -28,8 +28,8 @@ resource "aws_ecs_task_definition" "api" {
   task_role_arn            = var.api_task_role_arn
 
   container_definitions = jsonencode([{
-    name  = "api"
-    image = var.api_image
+    name         = "api"
+    image        = var.api_image
     portMappings = [{ containerPort = 8000, protocol = "tcp" }]
     environment = [
       { name = "ENVIRONMENT", value = var.environment },
